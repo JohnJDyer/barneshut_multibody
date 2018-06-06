@@ -1,0 +1,305 @@
+#include "ForceBarnesHut.hh"
+#include "Timer.hh"
+
+#ifdef _OPENMP
+#include <parallel/algorithm>
+#include <parallel/numeric>
+#else
+#include <algorithm>
+#endif
+
+#include <iostream>
+#include <iterator>     // std::ostream_iterator
+#include <vector>       // std::vector
+#include <algorithm>    // std::copy
+#include <memory>
+#include <tuple>
+#include <utility>
+
+//#include "MortonKeyCalculator.hh"
+#include "MortonKeyCalculator.cc"
+
+using namespace std;
+
+
+I_Body::I_Body( int radius, unique_ptr<I_Body> left, unique_ptr<I_Body> right, int bisection, Body *bodies_):
+	radius(radius),  bisection(bisection), _left(move(left)), _right(move(right))
+{
+
+	double l_m, r_m, l_x, r_x, l_y, r_y;
+
+	if (_left == nullptr) {
+		l_m = bodies_[bisection].m();
+		l_x = bodies_[bisection].x();
+		l_y = bodies_[bisection].y();
+	} else {
+		l_m = _left -> m();
+		l_x = _left -> x();
+		l_y = _left -> y();
+	}
+
+	if (_right == nullptr) {
+		r_m = bodies_[bisection+1].m();
+		r_x = bodies_[bisection+1].x();
+		r_y = bodies_[bisection+1].y();
+	} else {
+		r_m = _right -> m();
+		r_x = _right -> x();
+		r_y = _right -> y();
+	}
+
+	auto m = r_m + l_m;
+	auto x = (r_x *r_m + l_x *l_m) / m;
+	auto y = (r_y *r_m + l_y *l_m) / m;
+
+	Body(x,y,0.0,0.0,m);
+
+};
+
+
+
+I_Body::I_Body( int radius, unique_ptr<I_Body> left, unique_ptr<I_Body> right, int bisection, Body *bodies_):
+	radius(radius),  bisection(bisection), _left(move(left)), _right(move(right))
+{
+
+	double l_m, r_m, l_x, r_x, l_y, r_y;
+
+	if (_left == nullptr) {
+		l_m = bodies_[bisection].m();
+		l_x = bodies_[bisection].x();
+		l_y = bodies_[bisection].y();
+	} else {
+		l_m = _left -> m();
+		l_x = _left -> x();
+		l_y = _left -> y();
+	}
+
+	if (_right == nullptr) {
+		r_m = bodies_[bisection+1].m();
+		r_x = bodies_[bisection+1].x();
+		r_y = bodies_[bisection+1].y();
+	} else {
+		r_m = _right -> m();
+		r_x = _right -> x();
+		r_y = _right -> y();
+	}
+
+
+
+	auto m = r_m + l_m;
+	auto x = (r_x *r_m + l_x *l_m) / m;
+	auto y = (r_y *r_m + l_y *l_m) / m;
+
+	Body(x,y,0.0,0.0,m);
+
+};
+
+
+
+
+
+
+inline int binary_search(int guess, const function <bool(int)>& f){
+	int delta = 0;
+
+	for(guess >>= 1; guess > 0; guess >>= 1)
+		delta += guess * (bool) f(delta+guess);
+
+	return delta;
+
+}
+
+const inline int exponential_search(const function <bool(int)>& f){
+	auto guess = 2;
+
+	while(f(guess))
+		guess <<= 1;
+
+	return binary_search(guess, f);
+
+}
+
+
+unique_ptr<I_Body> ForceBarnesHut::construct_tree(int idx = 0) {
+
+	int bisection;
+	bool l_is_leaf, r_is_leaf;
+
+	tie(bisection, l_is_leaf, r_is_leaf) = children[idx];
+
+	unique_ptr<I_Body> left = nullptr, right = nullptr;
+
+	if (!l_is_leaf) {
+		#pragma omp task shared(left)
+		left = construct_tree(bisection);
+	}
+
+	if (!r_is_leaf) {
+		#pragma omp task shared(right)
+		right = construct_tree(bisection + 1);
+	}
+
+  #pragma omp taskwait
+
+	auto radius = get<3>(range[idx]);
+
+	return unique_ptr<I_Body>(new I_Body(radius, move(left),move(right), bisection, bodies_));
+
+}
+
+
+//Build the quad tree and do any other needed initialization here.
+//Quad tree construction should be parallelized
+ForceBarnesHut::ForceBarnesHut(Body *bodies, int N, double theta):
+	bodies_(bodies), i_bodies_(N-1), N_(N), theta_(theta), mkcalc(bodies_, N), parent(N), i_parent(N-1), range(N-1), children(N-1)
+{
+
+	__gnu_parallel::sort(bodies, bodies + N_, mkcalc);
+
+  #pragma omp parallel for
+	for(int start_p =0; start_p < N_-1; start_p++) {
+
+		const int  unit       = -1 + 2 * (bool) (mkcalc.radix_dist(start_p, start_p+1) >
+			                                       mkcalc.radix_dist(start_p, start_p-1));
+
+		const auto f          = [&](int v) -> int { return mkcalc.radix_dist(start_p, start_p + unit * v); };
+		const auto epsilon    = f(-1);
+		const auto test_delta = [&](int v) -> bool{ return f(v) > epsilon; };
+		auto delta            = exponential_search(test_delta);
+		const auto end_p      = start_p + delta * unit;
+		const auto diameter   = f(delta);
+		const auto test_d     = [&](int v) -> bool{ return f(v) > diameter; };
+		auto bisect_relative  = binary_search(delta, test_d);
+		int        bisection  = start_p + bisect_relative * unit - (bool) (unit < 0);
+
+	  int l_range, r_range;
+		tie(l_range, r_range) = minmax(start_p,end_p);
+
+		if(bisection == 1 and l_range == 0 and r_range == 2)
+			bisection = 0;
+
+		if(bisection == N-3 and r_range == N-1  and l_range == N-3)
+			bisection = N-2;
+
+		const auto r_node = bisection;
+		const auto l_node = bisection + 1;
+
+		const auto l_is_leaf = l_range == r_node;
+		const auto r_is_leaf = r_range == l_node;
+
+		if(l_is_leaf){parent[r_node]= start_p; }else { i_parent[r_node]= start_p;}
+		if(r_is_leaf){parent[l_node]= start_p; }else { i_parent[l_node]= start_p;}
+
+		uint32_t name_x = 0, name_y = 0;
+		tie(name_x, name_y) = mkcalc.radix_prefix(start_p, (uint32_t) diameter);
+
+		range   [start_p] = make_tuple(unit, start_p, l_range, bisection, r_range, diameter, name_x, name_y);
+		children[start_p] = make_tuple(bisection, l_is_leaf, r_is_leaf);
+	}
+
+
+	#pragma omp parallel
+	#pragma omp single
+	{
+		tree = construct_tree();
+	};
+
+	//print_tree();
+
+};
+
+void I_Body::apply_force(Body *pulled, double theta, Body *bodies) {
+
+//	auto dx = pulled->x() - this->x();
+//	auto dy = pulled->y() - this->y();
+//
+//	auto dist_squared = dx*dx + dy*dy;
+//
+//
+//	if(false){
+//		pulled->accGravityFrom(*this);
+//	}
+
+
+//	cerr << dx << " "
+//			<< dy << " "
+// 	  	<< theta  << " "
+//	 	 	<< radius << " "
+//			<< theta  << " "
+//	    << dist_squared  << endl;
+
+	if (_left != nullptr) {
+		_left->apply_force(pulled, theta, bodies);
+	} else {
+		pulled->accGravityFrom(bodies[bisection]); //cout << bisection << ",";
+		                                            //cout << ".";
+	}
+
+	if (_right != nullptr) {
+		_right->apply_force(pulled, theta, bodies);
+	} else {
+		pulled->accGravityFrom(bodies[bisection +1]); //cout << bisection + 1 << ",";
+																								  // cout << ".";
+	}
+
+
+};
+
+void ForceBarnesHut::operator()(Body *pulled){
+
+	tree -> apply_force(pulled, theta_, bodies_);
+
+	//Replace the naive code below with an efficient implementation
+	//of Barnes-Hut.
+//	for(int i = 0; i < N_; i++){
+//		pulled->accGravityFrom(bodies_[i]);
+//	}
+};
+
+
+void ForceBarnesHut::print_tree() {
+
+	ostream_iterator<int> out_it (cerr,"\t");
+	cerr << "=====================================" << endl << flush;
+	copy(parent.begin(),   parent.end(), out_it); cerr << endl;
+	copy(i_parent.begin(), i_parent.end(), out_it); cerr << endl;
+	cerr.precision(4);
+
+	cerr << scientific;
+
+	for (int i = 0; i < N_; i++) {
+		cerr << i << "\t";
+
+		vector<int>   stack;
+		vector<Range> stack2;
+
+		for(auto p = parent[i]; p != 0; p = i_parent[p]) {
+			stack.push_back(p);
+			stack2.push_back(range[p]) ;
+		}
+
+		//copy(stack.rbegin(), stack.rend(), out_it);
+
+		for(auto it = stack2.rbegin(); it != stack2.rend(); ++it) {
+			cerr << get<1>(*it) <<  " " << get<2>(*it) <<  " " << get<3>(*it) <<  " " << get<4>(*it) <<  " " << get<5>(*it) << " " << get<6>(*it) << " " << get<7>(*it) << "\t";
+		}
+
+		for (auto i = stack.size(); i < 6; i++)
+			cerr << "\t" << flush;
+
+		stack.clear();
+
+		cerr << " ";
+		mkcalc.printKey(cerr, bodies_[i]);
+	}
+
+	for(auto i: range){
+		cerr << get<3>(i) << ": "
+				 << get<0>(i) << " - "
+				 << get<1>(i) << " - "
+				 << get<2>(i) << endl;
+	}
+
+
+};
+
