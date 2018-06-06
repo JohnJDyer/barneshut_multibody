@@ -4,49 +4,49 @@
 
 
 Integrator::Integrator(UniverseState *state, 
-					   OnStepComplete* onstepcomplete, 
-					   ForceCalculatorFactory *fcfactory):
+             OnStepComplete* onstepcomplete, 
+             ForceCalculatorFactory *fcfactory):
 state_(state), 
 onstepcomplete_(onstepcomplete), 
 fcfactory_(fcfactory)
 {}
 
 void Integrator::run(double h, int nsteps){
-	const int N = state_->nbodies();
-	Body *state_bodies = state_->bodies();
-	Body *force_bodies = new Body[N];
+  const int N = state_->nbodies();
+  Body *state_bodies = state_->bodies();
+  Body *force_bodies = new Body[N];
 
-	//Outputs initial state
-	(*onstepcomplete_)(state_);
+  //Outputs initial state
+  (*onstepcomplete_)(state_);
 
-	for(int k = 0; k < nsteps; k++){
+  for(int k = 0; k < nsteps; k++){
 
-		//std::cout << "it " << k;
+    //std::cout << "it " << k;
 
-		#pragma omp parallel for
-		for(int i = 0; i < N; i++)
-			force_bodies[i] = state_bodies[i];
+    #pragma omp parallel for
+    for(int i = 0; i < N; i++)
+      force_bodies[i] = state_bodies[i];
 
-		ForceCalculator *fc = (*fcfactory_)(force_bodies, N);
+    ForceCalculator *fc = (*fcfactory_)(force_bodies, N);
 
-		#pragma omp parallel for
-		for(int i = 0; i < N; i++){
-			(*fc)(&state_bodies[i]);
-			//std::cout << std::endl;
-		}
+    #pragma omp parallel for
+    for(int i = 0; i < N; i++){
+      (*fc)(&state_bodies[i]);
+      //std::cout << std::endl;
+    }
 
-		#pragma omp parallel for
-		for(int i = 0; i < N; i++)
-			state_bodies[i].integrate(h);
+    #pragma omp parallel for
+    for(int i = 0; i < N; i++)
+      state_bodies[i].integrate(h);
 
-		//std::cout << std::endl;
+    //std::cout << std::endl;
 
-		state_->set_t(state_->t() + h);
+    state_->set_t(state_->t() + h);
 
-		(*onstepcomplete_)(state_);
+    (*onstepcomplete_)(state_);
 
-		delete fc;
-	}
+    delete fc;
+  }
 
-	delete[] force_bodies;
+  delete[] force_bodies;
 }

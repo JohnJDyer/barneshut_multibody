@@ -9,57 +9,57 @@
 using namespace std;
 
 class CSVOutput : public OnStepComplete{
-	private:
-		ostream& fd_;
-		bool isempty_;
-		int count;
-		const int every;
-	public:
-		CSVOutput(ostream& fd, int every) : fd_(fd), isempty_(true), count(0), every(every){}
+  private:
+    ostream& fd_;
+    bool isempty_;
+    int count;
+    const int every;
+  public:
+    CSVOutput(ostream& fd, int every) : fd_(fd), isempty_(true), count(0), every(every){}
 
-		virtual void operator() (UniverseState *state){
-			if(isempty_){
-				fd_<<"time_idx,body_idx,t,x,y,vx,vy,m"<<endl;
-				isempty_ = false;
-			}
-			if (count % every ==0)
-				writeToCSV(fd_, *state, count / every);
+    virtual void operator() (UniverseState *state){
+      if(isempty_){
+        fd_<<"time_idx,body_idx,t,x,y,vx,vy,m"<<endl;
+        isempty_ = false;
+      }
+      if (count % every ==0)
+        writeToCSV(fd_, *state, count / every);
 
-			//cerr<<count<<endl;
-			count++;
-		}
+      //cerr<<count<<endl;
+      count++;
+    }
 
-		virtual ~CSVOutput(){}
+    virtual ~CSVOutput(){}
 };
 
 UniverseState* loadState(const char *filename){
-	ifstream is;
+  ifstream is;
 
-	is.open(filename);
+  is.open(filename);
 
-	if(is.fail()){
-		cerr<<"Opening "<<filename<<" failed."<<endl;
-		exit(EXIT_FAILURE);
-	}
+  if(is.fail()){
+    cerr<<"Opening "<<filename<<" failed."<<endl;
+    exit(EXIT_FAILURE);
+  }
 
-	return UniverseState::createFromFile(is);
+  return UniverseState::createFromFile(is);
 };
 
 class MyForceCalculatorFactory : public ForceCalculatorFactory{
-	public:
-		MyForceCalculatorFactory() : use_barneshut_(false), theta_(0.0) {}
-		MyForceCalculatorFactory(double theta) : use_barneshut_(true), theta_(theta){}
+  public:
+    MyForceCalculatorFactory() : use_barneshut_(false), theta_(0.0) {}
+    MyForceCalculatorFactory(double theta) : use_barneshut_(true), theta_(theta){}
 
-		virtual ForceCalculator* operator()(Body *bodies, int N){
-			if(use_barneshut_)
-				return new ForceBarnesHut(bodies, N, theta_);
-			else	
-				return new ForceNaive(bodies, N);
-		}
+    virtual ForceCalculator* operator()(Body *bodies, int N){
+      if(use_barneshut_)
+        return new ForceBarnesHut(bodies, N, theta_);
+      else  
+        return new ForceNaive(bodies, N);
+    }
 
-	private:
-		const bool use_barneshut_;
-		const double theta_;
+  private:
+    const bool use_barneshut_;
+    const double theta_;
 };
 
 #define USAGE                                                                 \
@@ -75,57 +75,57 @@ class MyForceCalculatorFactory : public ForceCalculatorFactory{
 "  -h                  Show this help message\n" 
 
 int main(int argc, char **argv){
-	const char *filename = "initial.us";
-	int nsteps = 60000; 
-	int r = 1000;
-	double h = 0.003;
-	double theta = 0.1;
-	bool use_barneshut = false;
-	int option_char;
+  const char *filename = "initial.us";
+  int nsteps = 60000; 
+  int r = 1000;
+  double h = 0.003;
+  double theta = 0.1;
+  bool use_barneshut = false;
+  int option_char;
 
-	while ((option_char = getopt(argc, argv, "f:n:r:s:t:bh")) != -1) {
-		switch (option_char) {
-		case 'f':
-			filename = optarg;
-			break;
-		case 'n':
-			nsteps = atoi(optarg);
-			break;
-		case 'r':
-			r = atoi(optarg);
-			break;
-		case 's':
-			h = atof(optarg);
-			break;
-		case 't':
-			theta = atof(optarg);
-			break;
-		case 'b':
-			use_barneshut = true;
-			break;
-		case 'h':
-			fprintf(stderr, "%s\n", USAGE);
-			exit(EXIT_SUCCESS);
-			break;                      
-		default:
-			fprintf(stderr, "%s\n", USAGE);
-			exit(EXIT_FAILURE);
-		}
-	}
+  while ((option_char = getopt(argc, argv, "f:n:r:s:t:bh")) != -1) {
+    switch (option_char) {
+    case 'f':
+      filename = optarg;
+      break;
+    case 'n':
+      nsteps = atoi(optarg);
+      break;
+    case 'r':
+      r = atoi(optarg);
+      break;
+    case 's':
+      h = atof(optarg);
+      break;
+    case 't':
+      theta = atof(optarg);
+      break;
+    case 'b':
+      use_barneshut = true;
+      break;
+    case 'h':
+      fprintf(stderr, "%s\n", USAGE);
+      exit(EXIT_SUCCESS);
+      break;                      
+    default:
+      fprintf(stderr, "%s\n", USAGE);
+      exit(EXIT_FAILURE);
+    }
+  }
 
-	UniverseState* state = loadState(filename);
-	CSVOutput csvoutput(cout, r);
-	MyForceCalculatorFactory *fcfactory;
-	if(use_barneshut)
-		fcfactory = new MyForceCalculatorFactory(theta);
-	else
-		fcfactory = new MyForceCalculatorFactory();
+  UniverseState* state = loadState(filename);
+  CSVOutput csvoutput(cout, r);
+  MyForceCalculatorFactory *fcfactory;
+  if(use_barneshut)
+    fcfactory = new MyForceCalculatorFactory(theta);
+  else
+    fcfactory = new MyForceCalculatorFactory();
 
-	Integrator integrator(state, &csvoutput, fcfactory);
+  Integrator integrator(state, &csvoutput, fcfactory);
 
-	integrator.run(h, nsteps);
+  integrator.run(h, nsteps);
 
-	delete fcfactory;
-	delete state;
+  delete fcfactory;
+  delete state;
 }
 

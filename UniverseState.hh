@@ -8,26 +8,26 @@
 using namespace std;
 
 class UniverseState{
-	public:
-		static UniverseState* createFromFile(istream &is);
+  public:
+    static UniverseState* createFromFile(istream &is);
 
-		UniverseState(int nbodies);
+    UniverseState(int nbodies);
 
-		//Accessors
-		inline int nbodies() const{return nbodies_;};
-		inline double t() const{return t_;}
-		inline Body* bodies() const{return bodies_;}
+    //Accessors
+    inline int nbodies() const{return nbodies_;};
+    inline double t() const{return t_;}
+    inline Body* bodies() const{return bodies_;}
 
-		//Mutators
-		inline void set_t(double t){t_ = t;}
+    //Mutators
+    inline void set_t(double t){t_ = t;}
 
-		~UniverseState();
+    ~UniverseState();
 
-	private:
-		const int nbodies_;		//Number of Bodies
-		double t_;				//Current time
+  private:
+    const int nbodies_;    //Number of Bodies
+    double t_;        //Current time
 
-		Body *bodies_;			//Bodies
+    Body *bodies_;      //Bodies
 };
 
 std::ostream& writeToFile(ostream& os, const UniverseState& state);

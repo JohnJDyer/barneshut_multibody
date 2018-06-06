@@ -4,13 +4,13 @@
 #include "Body.hh"
 
 class ForceCalculator{
-	public:
+  public:
 
-		//Add forces to the body pulled, which may
-		//or may not be among the pulling bodies.
-		virtual void operator() (Body *pulled) = 0;
+    //Add forces to the body pulled, which may
+    //or may not be among the pulling bodies.
+    virtual void operator() (Body *pulled) = 0;
 
-		virtual ~ForceCalculator(){};
+    virtual ~ForceCalculator(){};
 };
 
 #endif

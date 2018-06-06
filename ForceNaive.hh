@@ -6,18 +6,18 @@
 
 class ForceNaive : public ForceCalculator {
 
-	public:
-		ForceNaive(Body *bodies, int N);
+  public:
+    ForceNaive(Body *bodies, int N);
 
-		virtual void operator() (Body *pulled);
+    virtual void operator() (Body *pulled);
 
-		virtual ~ForceNaive(){};
+    virtual ~ForceNaive(){};
 
-		double force_time;
+    double force_time;
 
-	private:
-		Body *bodies_;
-		const int N_;
+  private:
+    Body *bodies_;
+    const int N_;
 };
 
 #endif
